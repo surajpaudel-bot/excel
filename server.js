@@ -1,21 +1,26 @@
-const { Console } = require('console');
-const express =require('express'); // import express to create a web server
-const path= require('path');
+const express = require('express');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const fs = require('fs');
+const path = require('path');
 
-const app= express();
+const app = express();
+const PORT = 5000;
 
-const PORT = process.env.PORT||5000;
+app.use(express.json()); 
 app.use(express.static(path.join(__dirname, 'public')));
 
 // configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// upload route
+// store uploaded data in memory
+let excelData = []; // This will hold the data from uploaded Excel file
+
+// --- Upload route ---
 app.post('/upload', upload.single('file'), (req, res) => {
   try {
+    if (!req.file) throw new Error("No file uploaded");
+
     const filePath = req.file.path;
 
     // read Excel file
@@ -23,12 +28,35 @@ app.post('/upload', upload.single('file'), (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-    // delete the file after reading (optional)
+    // store in memory
+    excelData = data;
+
+    // delete the uploaded file
     fs.unlinkSync(filePath);
 
-    // send JSON data back to browser
     res.json({ success: true, rows: data });
   } catch (err) {
+    console.error(err); // show error in server console
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Search route ---
+app.post('/search', (req, res) => {
+  try {
+    const { query } = req.body;
+
+    if (!query) return res.json({ rows: excelData });
+
+    const filtered = excelData.filter(row =>
+      Object.values(row).some(val =>
+        String(val).toLowerCase().includes(query.toLowerCase())
+      )
+    );
+
+    res.json({ rows: filtered });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
